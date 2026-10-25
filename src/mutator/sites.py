@@ -38,7 +38,7 @@ _BINARY_PARENTS = {
     "boolean_operator",
 }
 
-_UNARY_PARENTS = {"unary_expression", "unary_operator", "not_operator"}
+_UNARY_PARENTS = {"unary_expression", "unary_operator", "not_operator", "prefix_unary_expression"}
 
 _BOOLEANS = {"true": "false", "false": "true", "True": "False", "False": "True"}
 

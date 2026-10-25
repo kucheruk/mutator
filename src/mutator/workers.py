@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import sys
 import uuid
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from queue import Empty, Queue
@@ -26,6 +28,7 @@ from mutator.sites import apply_site
 SKIP_LINK = frozenset(
     {
         ".git",
+        "bin", "obj", "TestResults", ".worktrees",
         ".hg",
         ".svn",
         ".idea",
@@ -267,6 +270,35 @@ def _overlay(worker: Path, root: Path, relative: str, original: bytes) -> None:
     destination.write_bytes(original)
 
 
+def _copy_csharp(root: Path, worker: Path) -> None:
+    def ignored(directory, names):
+        skip = set(names) & (SKIP_LINK | {"node_modules"})
+        for name in set(names) - skip:
+            path = Path(directory) / name
+            if path.is_symlink():
+                raise ValueError(f"C# worker requires a self-contained tree; symlink: {path}")
+            if path.suffix not in {".csproj", ".props", ".targets", ".slnx"}:
+                continue
+            for item in ET.parse(path).getroot().iter():
+                tag = item.tag.rsplit("}", 1)[-1]
+                reference = None
+                if tag == "ProjectReference":
+                    reference = item.get("Include")
+                elif path.suffix == ".slnx" and tag == "Project":
+                    reference = item.get("Path")
+                if reference is None:
+                    continue
+                if any(token in reference for token in ("$(", "*", ";")):
+                    raise ValueError(f"C# worker cannot resolve dynamic project reference {reference!r} in {path}")
+                target = (path.parent / reference.replace("\\", "/")).resolve()
+                if not target.is_relative_to(root.resolve()):
+                    raise ValueError(f"Project reference leaves --root: {path} -> {reference}; use a root containing the entire solution")
+        return skip
+
+    # shortcut: copy the bounded solution tree per worker; use an MSBuild graph for large roots.
+    shutil.copytree(root, worker, dirs_exist_ok=True, ignore=ignored)
+
+
 def create_workers(
     base: Path, root: Path, relative: str, original: bytes, count: int
 ) -> list[Path]:
@@ -276,6 +308,11 @@ def create_workers(
     for index in range(count):
         worker = base / f"worker-{index}"
         worker.mkdir(parents=True, exist_ok=True)
+        if relative.endswith(".cs"):
+            _copy_csharp(root, worker)
+            (worker / relative).write_bytes(original)
+            created.append(worker)
+            continue
         _copy_configs(worker, root, relative)
         _link_children(worker, root, {first})
         _overlay(worker, root, relative, original)

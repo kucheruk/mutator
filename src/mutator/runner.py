@@ -222,9 +222,16 @@ def _python_plan(root: Path, source: Path) -> tuple[Command, Path]:
     return _python_command(directory), directory
 
 
+def _csharp_plan(root: Path, source: Path) -> tuple[Command, Path]:
+    from mutator.crapper_link import ensure_crapper
+    target = ensure_crapper().runners.dotnet_target(root)
+    return ["dotnet", "test", target.name], root
+
+
 _PLANS = {
     "clojure": _clojure_plan,
     "java": _java_plan,
+    "csharp": _csharp_plan,
     "go": _go_plan,
     "typescript": _typescript_plan,
     "rust": _rust_plan,
@@ -241,6 +248,10 @@ def test_plan(root: Path, source: Path, language: str, override: str | None) -> 
 
     root = root.resolve()
     if override:
+        if language == "csharp" and any(part.split("=", 1)[0] == "--no-build" for part in shlex.split(override)):
+            raise ValueError("C# mutations require recompilation; --no-build would test the original assembly")
+        if language == "csharp" and any(Path(part).is_absolute() and Path(part).suffix in {".csproj", ".sln", ".slnx"} for part in shlex.split(override)):
+            raise ValueError("Use relative .NET project paths so tests build the worker, not the original tree")
         return override, root
     plan = _PLANS.get(language)
     if plan is None:

@@ -121,3 +121,44 @@ python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 .venv/bin/pytest
 ```
+
+## C# / .NET (this fork)
+
+This is a fork of [unclebob/mutator](https://github.com/unclebob/mutator).
+Install [kucheruk/crapper](https://github.com/kucheruk/crapper) in the same Python
+environment. Function ownership, overload signatures, source byte spans and
+Cobertura coverage come from that fork. C# mutations cover arithmetic,
+comparisons, equality, boolean operators/literals, unary `!`/`-`, and `0`/`1`.
+Strings and comments are not mutation sites. Property/accessor and expression
+bodies use the same member identities as the CRAP report.
+
+```sh
+mutator --scan src/Calculator.cs
+mutator --use-existing-coverage --max-workers 2 src/Calculator.cs
+mutator --no-coverage --max-workers 2 --test-command 'dotnet test tests/Calculator.Tests.csproj' src/Calculator.cs
+```
+
+The default test command is `dotnet test <solution>` from `--root`, which must
+contain exactly one `.sln` or `.slnx`. Use relative project paths in custom test
+commands. Both VSTest/xUnit and Microsoft.Testing.Platform/xUnit v3 are supported.
+For coverage generation, install Coverlet console as described in the Crapper
+fork; existing Coverlet Cobertura or LCOV can be reused.
+
+Every mutant must rebuild its assembly. `--no-build` and absolute project paths
+in custom commands are rejected: they could test the original binary. C# workers
+copy the solution tree instead of linking it, omit `bin`, `obj`, `TestResults`
+and other output/cache directories, and are removed afterward. Sources in the
+original tree are not rewritten. Baseline tests run once in the original tree.
+Keep `--root` bounded and include all referenced projects; copying a large
+monorepo per worker is expensive. Symlinks, references outside the root and
+unresolved dynamic project references are rejected instead of being counted as
+killed mutants. Arbitrary custom build scripts remain the caller's responsibility.
+
+As upstream, compilation failures and timeouts count as killed. Use the site
+report and your normal build to distinguish useful test kills from invalid
+mutations. This fork does not add Roslyn semantic mutation analysis.
+
+`python -m pytest -q tests/test_csharp_dotnet.py` exercises real .NET 10 projects,
+source coverage (including async), duplicate detection, two isolated workers,
+killed/surviving mutants and original source preservation. The MTP case requires
+`coverlet` on PATH; this is reported as a skip when absent.
