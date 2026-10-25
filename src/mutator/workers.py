@@ -277,17 +277,20 @@ def _copy_csharp(root: Path, worker: Path) -> None:
             path = Path(directory) / name
             if path.is_symlink():
                 raise ValueError(f"C# worker requires a self-contained tree; symlink: {path}")
-            if path.suffix not in {".csproj", ".props", ".targets", ".slnx"}:
-                continue
-            for item in ET.parse(path).getroot().iter():
-                tag = item.tag.rsplit("}", 1)[-1]
-                reference = None
-                if tag == "ProjectReference":
-                    reference = item.get("Include")
-                elif path.suffix == ".slnx" and tag == "Project":
-                    reference = item.get("Path")
-                if reference is None:
-                    continue
+            references = []
+            if path.suffix == ".sln":
+                references = re.findall(r'Project\("[^"\n]+"\)\s*=\s*"[^"\n]*",\s*"([^"\n]+\.csproj)"', path.read_text(encoding="utf-8-sig"))
+            elif path.suffix in {".csproj", ".props", ".targets", ".slnx"}:
+                for item in ET.parse(path).getroot().iter():
+                    tag = item.tag.rsplit("}", 1)[-1]
+                    reference = None
+                    if tag == "ProjectReference":
+                        reference = item.get("Include")
+                    elif path.suffix == ".slnx" and tag == "Project":
+                        reference = item.get("Path")
+                    if reference is not None:
+                        references.append(reference)
+            for reference in references:
                 if any(token in reference for token in ("$(", "*", ";")):
                     raise ValueError(f"C# worker cannot resolve dynamic project reference {reference!r} in {path}")
                 target = (path.parent / reference.replace("\\", "/")).resolve()

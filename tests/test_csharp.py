@@ -56,3 +56,10 @@ def test_external_or_dynamic_project_reference_is_not_a_killed_mutant(tmp_path, 
     (tmp_path / 'App/App.csproj').write_text(f'<Project><ItemGroup><ProjectReference Include="{reference}"/></ItemGroup></Project>')
     with pytest.raises(ValueError, match='reference'):
         create_workers(tmp_path / 'target/run', tmp_path, 'App/C.cs', b'code', 1)
+
+
+def test_solution_cannot_reach_projects_outside_worker(tmp_path):
+    (tmp_path / 'App.csproj').write_text('<Project/>')
+    (tmp_path / 'Demo.sln').write_text('Project("{GUID}") = "Tests", "../outside/Tests.csproj", "{GUID}"\nEndProject')
+    with pytest.raises(ValueError, match='reference'):
+        create_workers(tmp_path / 'target/run', tmp_path, 'C.cs', b'code', 1)
